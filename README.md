@@ -19,3 +19,20 @@ php实现的轻量级日志文件监控
 下载脚本，放置在随便一个地方。
 
 更多待补充。
+
+## nginx 自定义格式
+
+```
+ log_format json '{"@timestamp":"$time_iso8601",'
+               '"@version":"1",'
+               '"host":"$server_addr",'
+               '"client":"$http_x_forwarded_for",'
+               '"size":$body_bytes_sent,'
+               '"responsetime":$upstream_response_time,'
+               '"domain":"$host",'
+               '"url":"$uri",'
+               '"request":"$request",'
+               '"uagent":"$http_user_agent",'
+               '"referer":"$http_referer",'
+               '"status":"$status"}';
+```
