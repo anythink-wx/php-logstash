@@ -47,20 +47,17 @@ class LogStash{
 	}
 
 
-
-
-
+	/**
+	 * redis 链接
+	 */
 	private function redis(){
-		if($this->RedisRetryCount > 5){
-			$this->log('Redis Connect retry max');
-		}
 		try {
 			$redis = new redis();
 			$redis->pconnect($this->config['host'],$this->config['port'],0);
 			$this->redis = $redis;
+			$this->redis->ping();
 		}catch (Exception $e){
-			$this->RedisRetryCount++;
-			$this->log($e->getMessage() .$e->getCode());
+			$this->log($e->getMessage() .' now retrying');
 			sleep(1); //如果报错等一秒再重连
 			$this->redis();
 		}
@@ -130,7 +127,12 @@ class LogStash{
 		return json_decode($body,true);
 	}
 
-	function parser($message){
+	/**
+	 * 默认的处理log的方法
+	 * @param $message
+	 * @return mixed
+	 */
+	private function parser($message){
 		$json = json_decode($message,true);
 		list($request_method,$args,$protocol) = explode(' ',$json['request']);
 		list($api_interface,$params) = explode('?',$args);
@@ -146,6 +148,30 @@ class LogStash{
 
 
 	private function inputAgent(){
+		$current_usage = memory_get_usage();
+		$sync_second = $this->config['input_sync_second'];
+		$sync_memory = $this->config['input_sync_memory'];
+		$time = ($this->begin + $sync_second) - time() ;
+		if((memory_get_usage() > $sync_memory) or ( $this->begin+$sync_second  < time())){
+			try{
+				$this->redis->ping(); //这里的存活检测还有带验证
+				$pipe = $this->redis->multi(Redis::PIPELINE);
+				foreach($this->message as $pack){
+					$pipe->lPush($this->config['list_key'],json_encode($pack));
+				}
+				$replies = $pipe->exec();
+				$this->log('count memory > '.$sync_memory.' current:'.$current_usage.' or time > '.$sync_second.
+					' current: '.$time.'s ','sync');
+			}catch (Exception $e){
+				$this->log('multi push error :' . $e->getMessage());
+				$this->redis();
+			}
+			$this->begin = time(); //reset begin time
+			unset($this->message); //reset message count
+		}
+	}
+
+	private function sendAgent(){
 		$current_usage = memory_get_usage();
 		$sync_second = $this->config['input_sync_second'];
 		$sync_memory = $this->config['input_sync_memory'];
