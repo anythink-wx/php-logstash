@@ -21,7 +21,7 @@ php实现的轻量级日志文件监控
 tail -F access.log | php logstash.php listen -f conf.ini
 
 
-输出
+索引方式
 
 php logstash indexer -f conf.ini
 
@@ -34,7 +34,7 @@ nohup tail -F access.log | php logstash.php listen -f conf.ini &
 nohup php logstash indexer -f conf.ini &
 ```
 
-调试
+调试方式
 
 程序提供了一个指令用来模拟日志写入
 
@@ -45,7 +45,7 @@ php logstash.php build <log_number> #生成的log条目数，默认50万条
 
 tail -F case.log | php logstash.php listen -f conf.ini
 
-测试执行步骤
+通过以上命令测日志监听状态，并从redis中查看结果，或重新定义parser方法在内部中断调试日志解析过程
 ```
 
 全部指令
