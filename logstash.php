@@ -177,6 +177,14 @@ class LogStash{
 		$sync_memory = $this->config['input_sync_memory'];
 		$time = ($this->begin + $sync_second) - time() ;
 		if((memory_get_usage() > $sync_memory) or ( $this->begin+$sync_second  < time())){
+
+			try{
+				$this->redis->ping();
+			}catch(Exception $e){
+				$this->log($e->getMessage());
+				$this->redis(); //重连
+			}
+
 			try{
 				$pipe = $this->redis->multi(Redis::PIPELINE);
 				foreach($this->message as $pack){
