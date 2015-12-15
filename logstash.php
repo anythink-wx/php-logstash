@@ -153,8 +153,14 @@ class LogStash{
 		$sync_memory = $this->config['input_sync_memory'];
 		$time = ($this->begin + $sync_second) - time() ;
 		if((memory_get_usage() > $sync_memory) or ( $this->begin+$sync_second  < time())){
+
 			try{
-				$this->redis->ping(); //这里的存活检测还有带验证
+				$this->redis->ping();
+			}catch(Exception $e){
+				$this->redis();
+			}
+
+			try{
 				$pipe = $this->redis->multi(Redis::PIPELINE);
 				foreach($this->message as $pack){
 					$pipe->lPush($this->config['list_key'],json_encode($pack));
@@ -164,7 +170,6 @@ class LogStash{
 					' current: '.$time.'s ','sync');
 			}catch (Exception $e){
 				$this->log('multi push error :' . $e->getMessage());
-				$this->redis();
 			}
 			$this->begin = time(); //reset begin time
 			unset($this->message); //reset message count
