@@ -16,8 +16,6 @@ class LogStash{
 	private $cmd;
 	private $args;
 
-	private $indices;
-
 	/**
 	 * @param array $config
 	 */
@@ -137,7 +135,7 @@ class LogStash{
 
 
 
-	function esCurl($url,$data='',$method='POST'){
+	private function esCurl($url,$data='',$method='POST'){
 		$ch = curl_init();
 		curl_setopt($ch, CURLOPT_URL, $this->config['elastic_host'].$url);
 		curl_setopt($ch, CURLOPT_HEADER, 0);
@@ -175,7 +173,7 @@ class LogStash{
 		return json_decode($body,true);
 	}
 
-	function esIndices(){
+	private function esIndices(){
 		$string_not_analyzed = ['type'=>'string','index'=>'not_analyzed','doc_values'=>true];
 		//put /d curl -XPUT localhost:9200/_template/template_1 -d
 		$indices['template'] = $this->config['prefix'].'-*';
