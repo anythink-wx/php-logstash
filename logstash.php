@@ -5,7 +5,7 @@
  * Date: 15/12/13
  * Time: 下午7:07
  */
-define('php_logstash','0.1.0');
+define('php_logstash','0.1.1');
 
 class LogStash{
 	private $config;
@@ -15,6 +15,8 @@ class LogStash{
 
 	private $cmd;
 	private $args;
+
+	private $indices;
 
 	/**
 	 * @param array $config
@@ -40,9 +42,10 @@ class LogStash{
 		$this->default_value($cfg,'host','127.0.0.1');
 		$this->default_value($cfg,'port',6379);
 		$this->default_value($cfg,'agent_log',__DIR__ .'/agent.log');
-		$this->default_value($cfg,'list_key','log');
+		$this->default_value($cfg,'type','log');
+		$this->default_value($cfg,'prefix','phplogstash');
 		$this->default_value($cfg,'input_sync_memory',5*1024*1024);
-		$this->default_value($cfg,'input_sync_second',10);
+		$this->default_value($cfg,'input_sync_second',5);
 		$this->default_value($cfg,'parser',[$this,'parser']);
 
 		$this->default_value($cfg,'elastic_host','http://127.0.0.1:9200');
@@ -92,16 +95,19 @@ class LogStash{
 
 
 	function indexer(){
-
+		$this->begin = time();
+		$this->esCurl('/_template/'.$this->config['prefix'],json_encode($this->esIndices()),'PUT');
+	//	exit;
 		while (true) {
-			$msg = $this->redis->rPop($this->config['list_key']);
-			if (false !== $msg) {
-				$this->message[] = $msg;
-				$this->indexerAgent();
-			}else{
-				sleep(1);
-				$this->log('waiting for queue','debug');
+			while($msg = $this->redis->rPop($this->config['type'])){
+				if (false !== $msg) {
+					$this->message[] = $msg;
+					$this->indexerAgent();
+				}
 			}
+			sleep(1);
+			$this->indexerAgent();
+			$this->log('waiting for queue','debug');
 		}
 	}
 
@@ -131,72 +137,146 @@ class LogStash{
 
 
 
-	function esCurl($url,$data='',$method='post'){
+	function esCurl($url,$data='',$method='POST'){
 		$ch = curl_init();
 		curl_setopt($ch, CURLOPT_URL, $this->config['elastic_host'].$url);
 		curl_setopt($ch, CURLOPT_HEADER, 0);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 		curl_setopt($ch,CURLOPT_TIMEOUT,5);
+		//curl_setopt ($ch, CURLOPT_PROXY, 'http://192.168.1.40:8888');
+
+
+
 		if($this->config['elastic_user']){
 			curl_setopt($ch, CURLOPT_USERPWD, "{$this->config['elastic_user']}:{$this->config['elastic_pwd']}");
 		}
+		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 
-		if($method =='post'){
-			curl_setopt ( $ch, CURLOPT_POST, 1 );
+		if($data){
 			curl_setopt ( $ch, CURLOPT_POSTFIELDS, $data );
-		}else{
-			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-			curl_setopt($ch,CURLOPT_HTTPHEADER,array("X-HTTP-Method-Override: $method"));
 		}
 
 
 		$body = curl_exec($ch);
 		$code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
-		$err = curl_error($ch);
 
-		$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
-		$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
-			'body: '.$body.PHP_EOL.
-			'data: '.$data
-		);
-	//	sleep(1);
-	//	unset($body,$code,$err,$ch);
-	//	$this->esCurl($url,$data,$method);
+		if(curl_error($ch)){
+			$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
+				$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
+				'Curl error:' . curl_error($ch). PHP_EOL.
+				'body: '.$body.PHP_EOL.
+				'data: '.mb_substr($data,0,100)
+			);
+		}
+
 		curl_close($ch);
+		unset($code,$err,$data);
 
 		return json_decode($body,true);
 	}
 
 	function esIndices(){
-		//put /d
-		$indices['settings']['index'] = ['number_of_shards' => 1,'number_of_replicas'=>1,'refresh_interval'=>'10s'];
-		$indices['mappings']['log']['_source'] = ['enabled' => 'false'];
-		$string_not_analyzed = ['type'=>'string','index'=>'not_analyzed'];
-		$indices['mappings']['log']['properties'] = [
-			'timestamp' => ['type'=>'date'],
-			'host'      => $string_not_analyzed,
-			'client'    => $string_not_analyzed,
-			'size'      => ['type'=>'integer','index'=>'not_analyzed'],
-			'responsetime' => ['type'=>'float','index'=>'not_analyzed'],
-			'domain' => $string_not_analyzed,
-			'url'    => $string_not_analyzed,
+		$string_not_analyzed = ['type'=>'string','index'=>'not_analyzed','doc_values'=>true];
+		//put /d curl -XPUT localhost:9200/_template/template_1 -d
+		$indices['template'] = $this->config['prefix'].'-*';
+		$indices['settings']['index'] = ['number_of_shards' => 1,'number_of_replicas'=>1,'refresh_interval'=>'5s'];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['string_fields'] = [
+			'match_mapping_type' => 'string',
+			'mapping' => [
+				'index' => 'analyzed',
+				'omit_norms' => true,
+				'type' => 'string',
+				'fields' =>[
+					'raw' => [
+						'index' => 'not_analyzed',
+						'ignore_above' => 256,
+						'doc_values' => true,
+						'type' => 'string'
+					],
+				],
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['float_fields'] = [
+			'match_mapping_type' => 'float',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'float',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['double_fields'] = [
+			'match_mapping_type' => 'double',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'double',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['byte_fields'] = [
+			'match_mapping_type' => 'byte',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'byte',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['short_fields'] = [
+			'match_mapping_type' => 'short',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'short',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['integer_fields'] = [
+			'match_mapping_type' => 'integer',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'integer',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['long_fields'] = [
+			'match_mapping_type' => 'long',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'long',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['date_fields'] = [
+			'match_mapping_type' => 'date',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'date',
+			],
+		];
+
+		$indices['mappings']['_default_']['dynamic_templates'][]['geo_point_fields'] = [
+			'match_mapping_type' => 'geo_point',
+			'mapping' => [
+				'doc_values' => true,
+				'type' => 'geo_point',
+			],
+		];
+
+		$indices['mappings']['_default_']['_all'] = [
+			'enabled' => true,
+			'omit_norms'=> true,
+		];
+		$indices['mappings']['_default_']['properties'] = [
+			'timestamp' => ['type'=>'date','doc_values' => true],
+			'client'    =>['type'=>'ip'],
+			'host'		=> ['type'=>'string','index'=>'not_analyzed'],
+			'size'      => ['type'=>'integer','doc_values'=>true],
+			'responsetime' => ['type'=>'float','doc_values'=>true],
 			'request' => ['type'=>'string'],
-			'uagent' => $string_not_analyzed,
-			'referer' => $string_not_analyzed,
-			'status' => ['type'=>'integer','index'=>'not_analyzed'],
+			'status' => ['type'=>'integer','doc_values'=>true],
 			'params' => ['type'=>'object'],
 		];
 		return $indices;
-
-		/*
-		 * "mappings" : {
-        "type1" : {
-            "_source" : { "enabled" : false },
-            "properties" : {
-                "field1" : { "type" : "string", "index" : "not_analyzed" }
-            }
-        }
-    }*/
 	}
 
 	/**
@@ -209,7 +289,7 @@ class LogStash{
 		list($request_method,$args,$protocol) = explode(' ',$json['request']);
 		list($api_interface,$params) = explode('?',$args);
 		parse_str($params,$paramsOutput);
-		$json['responsetime'] = (int) $json['responsetime'];
+		$json['responsetime'] = floatval($json['responsetime']);
 		$json['request_method'] = $request_method;
 		$json['method'] = $api_interface;
 		$json['params'] = $paramsOutput;
@@ -229,14 +309,14 @@ class LogStash{
 			try{
 				$this->redis->ping();
 			}catch(Exception $e){
-				$this->log('inpit Agent check redis :' . $e->getMessage(),'debug');
+				$this->log('input Agent check redis :' . $e->getMessage(),'debug');
 				$this->redis();
 			}
 
 			try{
 				$pipe = $this->redis->multi(Redis::PIPELINE);
 				foreach($this->message as $pack){
-					$pipe->lPush($this->config['list_key'],json_encode($pack));
+					$pipe->lPush($this->config['type'],json_encode($pack));
 				}
 				$replies = $pipe->exec();
 				$this->log('count memory > '.$sync_memory.' current:'.$current_usage.' or time > '.$sync_second.
@@ -255,32 +335,26 @@ class LogStash{
 		$sync_memory = $this->config['input_sync_memory'];
 		$time = ($this->begin + $sync_second) - time() ;
 		if((memory_get_usage() > $sync_memory) or ( $this->begin+$sync_second  < time())){
-			$row = "";
-			$ins = $this->esIndices();
+			$row = '';
+			if(!empty($this->message)){
+				foreach($this->message as $pack){
+					$json = json_decode($pack,true);
+					$date = date('Y.m.d',strtotime($json['timestamp']));
+					$type = $this->config['type'];
+					$index = $this->config['prefix'].'-'.date('Y.m.d',strtotime($json['timestamp']));
+					$row .= json_encode(['create' => ['_index' => $index ,'_type'  => $type]])."\n";
+					$row .= json_encode($json)."\n";
+				}
+				if(!empty($row)){
+					$this->esCurl('/_bulk',$row);
+				}
+			}
 
 
-			foreach($this->message as $pack){
-				$json = json_decode($pack,true);
-				$index = 'logstash-'.date('Y.m.d',strtotime($json['timestamp']));
-				$this->esCurl('/'.$index,json_encode($ins),'PUT');
-				exit;
-				unset($json);
-				$type = $this->config['list_key'];
-				/*
-				$row .= json_encode(['create' =>array_merge( [
-					'_index' => 'logstash-'.date('Y-m-d'),
-					'_type'  => $type,
-				],$json)]) ."\n";
-				*/
-				$this->esCurl('/'.$index.'/'.$type.'',$pack,'post');
-			}
-			if(isset($row)){
-				//$this->esCurl('/_bulk',$row,'post');
-			}
 			$this->log('count memory > '.$sync_memory.' current:'.$current_usage.' or time > '.$sync_second.
-				' current: '.$time.'s ','sync');
+				' current: '.$time.'s ','elasticsearch');
 			$this->begin = time(); //reset begin time
-			unset($this->message); //reset message count
+			unset($this->message,$current_usage,$sync_second,$sync_memory,$time); //reset message count
 		}
 	}
 
