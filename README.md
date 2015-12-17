@@ -87,6 +87,7 @@ agent.php     #调用自定义配置文件并由该文件引导
      'elastic_host'      => 'http://127.0.0.1:9200/'  # elastic search通信地址
      'elastic_user'      => '',                       # es 用户名             
      'elastic_pwd'       => '',                       # es 密码 程序采用 http auth_basic 认证方式，其他认证暂不支持
+     'prefix'            => 'phplogstash',            # es 默认索引前缀名字为 phplogstash-2015.12.12 
 ];
 ```
 
