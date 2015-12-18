@@ -186,6 +186,53 @@ Array
 )
 ```
 
+## 日志的归档与轮转
+
+以下是 logrotate 的配置信息，放置在 /etc/logrotate.d 目录下，即可每日将.json 后缀的日志进行归档。
+
+```
+/data/logs/*.json  {
+        daily
+        missingok
+        rotate 10
+        dateext
+        compress
+        delaycompress
+        notifempty
+        create 644 www-data.www-data
+        sharedscripts
+        prerotate
+                if [ -d /etc/logrotate.d/httpd-prerotate ]; then \
+                        run-parts /etc/logrotate.d/httpd-prerotate; \
+                fi \
+        endscript
+        postrotate
+                invoke-rc.d nginx rotate >/dev/null 2>&1
+        endscript
+}
+```
+
+以上配置为Ubuntu APT 安装的脚本，自定义路径安装的请更改pid位置后再使用
+
+```
+/data/logs/*.json  {
+        daily
+        missingok
+        rotate 10
+        dateext
+        compress
+        delaycompress
+        notifempty
+        create 644 www-data.www-data
+        sharedscripts
+        postrotate
+                /usr/local/server/nginx/sbin/nginx -s reload
+        endscript
+}
+```
+
+
+
 
 ##异常处理
 
