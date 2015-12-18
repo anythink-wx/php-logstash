@@ -48,6 +48,7 @@ class LogStash{
 		$this->default_value($cfg,'input_sync_memory',5*1024*1024);
 		$this->default_value($cfg,'input_sync_second',5);
 		$this->default_value($cfg,'parser',[$this,'parser']);
+		$this->default_value($cfg,'log_level','product');
 
 		$this->default_value($cfg,'elastic_host','http://127.0.0.1:9200');
 		$this->default_value($cfg,'elastic_user');
@@ -395,8 +396,10 @@ class LogStash{
 	}
 
 	private function log($msg,$level='warning'){
-		$message = '['.$level.'] ['.date('Y-m-d H:i:s').'] ['.(memory_get_usage()/1024/1024).'MB] ' .$msg. PHP_EOL;
-		file_put_contents($this->config['agent_log'], $message, FILE_APPEND);
+		if($this->config['log_level'] == 'debug' || ($this->config['log_level'] != 'debug' and $leve != 'debug')){
+			$message = '['.$level.'] ['.date('Y-m-d H:i:s').'] ['.(memory_get_usage()/1024/1024).'MB] ' .$msg. PHP_EOL;
+			file_put_contents($this->config['agent_log'], $message, FILE_APPEND);
+		}
 	}
 }
 
