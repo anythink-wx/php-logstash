@@ -133,7 +133,6 @@ access_log web_accesslog.json json
 ```
 {
   "timestamp": "2015-12-18T14:24:26+08:00",
-  "_version": "1",
   "host": "10.10.23.139",
   "message": "0",
   "server": "localhost",
@@ -157,7 +156,6 @@ access_log web_accesslog.json json
 Array
 (
     [timestamp] => 2015-12-18T14:24:26+08:00
-    [_version] => 1
     [host] => 10.10.23.139
     [message] => 0
     [server] => localhost
