@@ -191,7 +191,7 @@ class LogStash{
 
 
 
-		if(curl_error($ch) || $code >200){
+		if(curl_error($ch)){
 			$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
 				$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
 				'Curl error:' . curl_error($ch). PHP_EOL.
