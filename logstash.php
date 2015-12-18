@@ -396,7 +396,7 @@ class LogStash{
 	}
 
 	private function log($msg,$level='warning'){
-		if($this->config['log_level'] == 'debug' || ($this->config['log_level'] != 'debug' and $leve != 'debug')){
+		if($this->config['log_level'] == 'debug' || ($this->config['log_level'] != 'debug' and $level != 'debug')){
 			$message = '['.$level.'] ['.date('Y-m-d H:i:s').'] ['.(memory_get_usage()/1024/1024).'MB] ' .$msg. PHP_EOL;
 			file_put_contents($this->config['agent_log'], $message, FILE_APPEND);
 		}
