@@ -6,12 +6,25 @@ php实现的轻量级日志文件监控
 
 通过这个轻巧的脚本可以很容易的将日志送到 elasticsearch 中，并且本地测试处理能力基本保持在接近1w/s的速度。
 
-脚本有2个部分,输入和输出。 
-输入 php logstash.php --listen=case.log 用来监听访问日志更新,或者使用tail -F case.log | php logstash.php --listen 来监听来自stdin的输入
+脚本主要实现两个功能，输入和输出。
 
-输出 php logstash.php --indexer 用来建立索引，该脚本每秒约索引8千左右，也可开多个并行处理。
+### 输入
 
-调试命令 php logstash.php --build=1 在本地输出 case.log 里追加一条log。
+php agent.php --listen=case.log 用来监听访问日志的变更
+
+或者使用命令 tail -F case.log | php agent.php --listen 来监听来自 stdin 的输入。
+
+该功能会持续将监听到的变更记入Redis队列中同时格式化将要记录的Log。
+
+### 输出
+
+php agent.php --indexer 用来建立索引，该脚本每秒约索引8千左右，也可开多个并行处理。
+
+该功能会持续将Redis队列中的数据导入 ElasticSearch 数据库中。
+
+### 调试
+
+php logstash.php --build=1 在本地生成的 case.log 中追加一条log。
 
 ## 依赖
 
@@ -19,25 +32,15 @@ php实现的轻量级日志文件监控
 * redis 扩展
 * curl 扩展
 
-## 使用方法
+## 使用方法说明
 
 ### 输入方式
 
-tail -F case.log | php logstash.php --listen
+php agent.php --listen=<file_path>  从头读取文件并持续监听
 
-带配置文件
-
-tail -F case.log | php agent.php --listen
-
-或者指定文件并从头开始索引
-
-php agent.php --listen=case.log
+tail -F case.log | php agent.php --listen 监听 Stdin 传入的数据
 
 ### 索引方式
-
-php logstash.php --indexer
-
-带配置文件
 
 php agent.php --indexer
 
@@ -57,23 +60,25 @@ nohup php agent.php --indexer &
 ```
 php logstash.php --build=<log_number> #生成的log条目数，默认20万条
 
-文件保存为case.log并且在同级目录下，可用 
+文件保存为case.log并且在同级目录下，可用命令
 
-tail -F case.log | php agent.php --listen
+tail -F case.log | php agent.php --listen 或
 
-通过以上命令测日志监听状态，并从redis中查看结果，或重新定义parser方法在内部中断调试日志解析过程
+php agent.php --listen=case.log
+
+
+测日志监听状态，并从redis中查看结果，或重新定义parser方法在内部中断调试日志解析过程
 ```
 
 全部指令
 
 ```
-logstash.php --listen=<file_path> #将脚本设置为输入模式，用来监听日志文件输入
+agent.php --listen=<file_path> #将脚本设置为输入模式，用来监听日志文件输入
 
-logstash.php --listen  #不指定文件将监听来自 stdin 的输入
+agent.php --listen  #不指定文件将监听来自 stdin 的输入
 
-logstash.php --indexer #将脚本设置为索引模式，用来从队列发送到ElasticSearch服务器
+agent.php --indexer #将脚本设置为索引模式，用来将队列的数据发送到 ElasticSearch 服务器
 
-agent.php     #调用自定义配置文件并由该文件引导
 ```
 
 
@@ -93,7 +98,7 @@ agent.php     #调用自定义配置文件并由该文件引导
 
      'elastic_host'      => 'http://127.0.0.1:9200/'  # elastic search通信地址
      'elastic_user'      => '',                       # es 用户名             
-     'elastic_pwd'       => '',                       # es 密码 程序采用 http auth_basic 认证方式，其他认证暂不支持
+     'elastic_pwd'       => '',                       # es 密码 程序采用 http auth_basic 认证方式，其他认证不支持
      'prefix'            => 'phplogstash',            # es 默认索引前缀名字为 phplogstash-2015.12.12 
 ];
 ```
@@ -101,8 +106,9 @@ agent.php     #调用自定义配置文件并由该文件引导
 
 ## 日志格式
 
-程序默认使用如下Nginx的log_format
-需要将 log_format 放置在 nginx 的 http 配置内
+程序默认使用如下Nginx的log_format，设置步骤如下
+
+1、将如下 log_format 规则放置在 nginx 的 http 配置内
 
 ```
   log_format json '{"timestamp":"$time_iso8601",'
@@ -121,10 +127,10 @@ agent.php     #调用自定义配置文件并由该文件引导
                '"referer":"$http_referer",'
                '"status":"$status"}';
 
-
 如果是内网机器需要使用该变量获取真实IP     $http_x_forwarded_for
 
-使用如下配置设置自定义日志格式，需要将该配置放在 server 的配置内
+2、将如下置放在 server 的配置内。
+
 access_log web_accesslog.json json
 ```
 
@@ -151,7 +157,8 @@ access_log web_accesslog.json json
 }
 ```
 
-默认的parser会把request的请求分解成如下样式，然后提交给elasticsearch
+默认的 parser 会把 request 的请求分解成resquesturi与args，然后提交给elasticsearch方便汇总查看，如果不需要这么详细的拆分请直接使用request字段即可。
+
 ```
 Array
 (
