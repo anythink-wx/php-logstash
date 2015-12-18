@@ -4,12 +4,12 @@ php实现的轻量级日志文件监控
 说明
 ------
 
-通过这个轻巧的脚本可以很容易的将日志送到 elasticsearch 的嘴巴里，并且本地测试处理能力基本保持在接近1w/s的速度。
+通过这个轻巧的脚本可以很容易的将日志送到 elasticsearch 中，并且本地测试处理能力基本保持在接近1w/s的速度。
 
 脚本有2个部分,输入和输出。 
-输入 php logstash.php --listen 用来监听访问日志更新
+输入 php logstash.php --listen=case.log 用来监听访问日志更新,或者使用tail -F case.log | php logstash.php --listen 来监听来自stdin的输入
 
-输出 php logstash.php --indexer 用来建立索引
+输出 php logstash.php --indexer 用来建立索引，该脚本每秒约索引8千左右，也可开多个并行处理。
 
 调试命令 php logstash.php --build=1 在本地输出 case.log 里追加一条log。
 
@@ -29,6 +29,10 @@ tail -F case.log | php logstash.php --listen
 
 tail -F case.log | php agent.php --listen
 
+或者指定文件并从头开始索引
+
+php agent.php --listen=case.log
+
 ### 索引方式
 
 php logstash.php --indexer
@@ -42,6 +46,7 @@ php agent.php --indexer
 ```
 #/bin/bash
 nohup tail -F access.log | php agent.php --listen &
+nohup php agent.php --listen=case.log & 
 nohup php agent.php --indexer &
 ```
 
@@ -62,7 +67,9 @@ tail -F case.log | php agent.php --listen
 全部指令
 
 ```
-logstash.php --listen #将脚本设置为输入模式，用来监听日志文件输入
+logstash.php --listen=<file_path> #将脚本设置为输入模式，用来监听日志文件输入
+
+logstash.php --listen  #不指定文件将监听来自 stdin 的输入
 
 logstash.php --indexer #将脚本设置为索引模式，用来从队列发送到ElasticSearch服务器
 
@@ -98,18 +105,22 @@ agent.php     #调用自定义配置文件并由该文件引导
 需要将 log_format 放置在 nginx 的 http 配置内
 
 ```
- log_format json '{"@timestamp":"$time_iso8601",'
-               '"@version":"1",'
+  log_format json '{"timestamp":"$time_iso8601",'
                '"host":"$server_addr",'
-               '"client":"$remote_addr",'
+               '"server":"$server_name",'
+               '"client":"$http_x_forwarded_for",'
                '"size":$body_bytes_sent,'
                '"responsetime":$upstream_response_time,'
                '"domain":"$host",'
+               '"method":"$request_method",'
                '"url":"$uri",'
+               '"requesturi":"$request_uri",'
+               '"via":"$server_protocol",'
                '"request":"$request",'
                '"uagent":"$http_user_agent",'
                '"referer":"$http_referer",'
                '"status":"$status"}';
+
 
 如果是内网机器需要使用该变量获取真实IP     $http_x_forwarded_for
 
@@ -117,8 +128,62 @@ agent.php     #调用自定义配置文件并由该文件引导
 access_log web_accesslog.json json
 ```
 
+生成的日志格式入如下，默认build的也是这种格式
+
+```
+{
+  "timestamp": "2015-12-18T14:24:26+08:00",
+  "_version": "1",
+  "host": "10.10.23.139",
+  "message": "0",
+  "server": "localhost",
+  "client": "127.0.0.1",
+  "size": 197,
+  "responsetime": 0.010,
+  "domain": "www.localhost.com",
+  "method": "GET",
+  "url": "/index.php",
+  "requesturi": "/controller/action?arg1=1&arg2=2",
+  "via": "HTTP/1.1",
+  "request": "GET /controller/action?arg1=1&arg2=2 HTTP/1.1",
+  "uagent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "referer": "-",
+  "status": "200"
+}
+```
+
+默认的parser会把request的请求分解成如下样式，然后提交给elasticsearch
+```
+Array
+(
+    [timestamp] => 2015-12-18T14:24:26+08:00
+    [_version] => 1
+    [host] => 10.10.23.139
+    [message] => 0
+    [server] => localhost
+    [client] => 127.0.0.1
+    [size] => 197
+    [responsetime] => 0.01
+    [domain] => www.localhost.com
+    [method] => GET
+    [url] => /index.php
+    [requesturi] => /controller/action?arg1=1&arg2=2
+    [via] => HTTP/1.1
+    [uagent] => Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
+    [referer] => -
+    [status] => 200
+    [resquesturi] => /controller/action
+    [args] => Array
+        (
+            [arg1] => 1
+            [arg2] => 2.7.1
+        )
+)
+```
+
+
 ##异常处理
 
-脚本从tail -F 启动后会持续监听日志输入，在没有PHP致命错误时，该脚本不会中断。
+脚本启动后会持续监听日志输入，在没有PHP致命错误、无内存泄露的情况下，该脚本不会中断。
 
 即使redis连接断开脚本也不会退出,而是以1秒一次的重连等待redis恢复，所以理论上该脚本不会异常中断。

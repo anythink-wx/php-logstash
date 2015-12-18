@@ -15,6 +15,7 @@ class LogStash{
 
 	private $cmd;
 	private $args;
+	private $file_pointer=0;
 
 	/**
 	 * @param array $config
@@ -24,9 +25,11 @@ class LogStash{
 		switch($opt){
 			case isset($opt['listen']):
 				$this->cmd = 'listen';
+				$this->args = $opt['listen'];
 				break;
 			case isset($opt['indexer']):
 				$this->cmd = 'indexer';
+				$this->args = $opt['indexer'];
 				break;
 			case isset($opt['build']):
 				$this->cmd = 'build';
@@ -81,12 +84,33 @@ class LogStash{
 	 */
 	function listen(){
 		$this->begin = time();
-		$this->log('begin in ' . $this->begin,'debug');
-		while($line = fgets(STDIN)){
-			$line = trim($line);
-			if($line){
-				$this->message[] = call_user_func($this->config['parser'],$line);
-				$this->inputAgent();
+		if($this->args){
+			$this->log('begin in file mode' . $this->begin,'debug');
+			if(!file_exists($this->args))exit(' file not found');
+
+			while(true){
+				$handle = fopen($this->args,'r');
+				if ($handle){
+					fseek($handle, $this->file_pointer);
+					while($line = trim(fgets($handle))){
+						$this->message[] = call_user_func($this->config['parser'],$line);
+						$this->inputAgent();
+					}
+					$this->file_pointer = ftell($handle);
+					fclose($handle);
+					$this->log('listen for in ' . $this->args . ', file pointer ' . $this->file_pointer, 'debug');
+					$this->inputAgent();
+					sleep(1);
+				}
+			}
+		}else{
+			$this->log('begin in tail mode ' . $this->begin,'debug');
+			while($line = fgets(STDIN)){
+				$line = trim($line);
+				if($line){
+					$this->message[] = call_user_func($this->config['parser'],$line);
+					$this->inputAgent();
+				}
 			}
 		}
 	}
@@ -95,7 +119,6 @@ class LogStash{
 	function indexer(){
 		$this->begin = time();
 		$this->esCurl('/_template/'.$this->config['prefix'],json_encode($this->esIndices()),'PUT');
-	//	exit;
 		while (true) {
 			while($msg = $this->redis->rPop($this->config['type'])){
 				if (false !== $msg) {
@@ -119,7 +142,7 @@ class LogStash{
 		$s = "";
 		echo "start" . PHP_EOL;
 		for($i=0;$i<$all_count;$i++){
-			$s .= '{"timestamp":"'.date('c').'","host":"10.10.23.139","message":"'.$i.'","client":"39.190.84.155","size":17298,"responsetime":0.104,"domain":"v10.gaonengfun.com","url":"/index.php","request":"GET /article/list?appkey=1&v=2.7.0&ch=baidu&waterfall_page=1&udid=618,620,1523,1598,1606,1611,1888,1903,1959,1976,2017,2299,2503,2534,2596,2673,2739,2842,2859,3054,3056,3084,3119,3182,3201,3236,3303,3320,3474,3598,3710,3779,4186,5139,5970,6733,6977,12451,12737,23470,25371,27079,31096,31321,34342,35780,40604,48033,53427,59003,59760,60060,60303,69665,69889,308584,327138,335495,348875 HTTP/1.1","uagent":"anythink android 2.7.0","referer":"-","status":"200"}'.PHP_EOL;
+			$s .= '{"timestamp":"'.date('c').'","host":"10.10.23.139","message":"'.$i.'","server":"v10.gaonengfun.com","client":"39.164.172.250","size":197,"responsetime":0.010,"domain":"v10.gaonengfun.com","method":"GET","url":"/index.php","requesturi":"/task/ballot?appkey=1&v=2.7.1&ch=xiaomi","via":"HTTP/1.1","request":"GET /task/ballot?appkey=1&v=2.7.1&ch=xiaomi HTTP/1.1","uagent":"NaoDong android 2.7.1","referer":"-","status":"200"}'.PHP_EOL;
 			$rate = number_format(($i/$all_count * 100),0);
 			if(memory_get_usage(true)/1024/1024 >= 50){
 				file_put_contents('case.log',$s,FILE_APPEND);
@@ -148,6 +171,7 @@ class LogStash{
 		if($this->config['elastic_user']){
 			curl_setopt($ch, CURLOPT_USERPWD, "{$this->config['elastic_user']}:{$this->config['elastic_pwd']}");
 		}
+
 		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 
 		if($data){
@@ -158,7 +182,16 @@ class LogStash{
 		$body = curl_exec($ch);
 		$code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
 
-		if(curl_error($ch)){
+		$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
+			$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
+			'Curl error:' . curl_error($ch). PHP_EOL.
+			'body: '.$body.PHP_EOL.
+			'data: '.mb_substr($data,0,100)
+		);
+
+
+
+		if(curl_error($ch) || $code >200){
 			$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
 				$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
 				'Curl error:' . curl_error($ch). PHP_EOL.
@@ -272,7 +305,7 @@ class LogStash{
 			'responsetime' => ['type'=>'float','doc_values'=>true],
 			'request' => ['type'=>'string'],
 			'status' => ['type'=>'integer','doc_values'=>true],
-			'params' => ['type'=>'object'],
+			'args' => ['type'=>'object'],
 		];
 		return $indices;
 	}
@@ -282,16 +315,14 @@ class LogStash{
 	 * @param $message
 	 * @return mixed
 	 */
-	private function parser($message){
+	private static function parser($message){
 		$json = json_decode($message,true);
-		list($request_method,$args,$protocol) = explode(' ',$json['request']);
-		list($api_interface,$params) = explode('?',$args);
+		list($request_url,$params) = explode('?',$json['requesturi']);
 		parse_str($params,$paramsOutput);
 		$json['responsetime'] = floatval($json['responsetime']);
-		$json['request_method'] = $request_method;
-		$json['method'] = $api_interface;
-		$json['params'] = $paramsOutput;
-		unset($json['request']);
+		$json['resquesturi'] = $request_url;
+		$json['args'] = $paramsOutput;
+		unset($request_url,$params,$paramsOutput);
 		return $json;
 	}
 
@@ -311,17 +342,20 @@ class LogStash{
 				$this->redis();
 			}
 
-			try{
-				$pipe = $this->redis->multi(Redis::PIPELINE);
-				foreach($this->message as $pack){
-					$pipe->lPush($this->config['type'],json_encode($pack));
+			if(!empty($this->message)){
+				try{
+					$pipe = $this->redis->multi(Redis::PIPELINE);
+					foreach($this->message as $pack){
+						$pipe->lPush($this->config['type'],json_encode($pack));
+					}
+					$replies = $pipe->exec();
+					$this->log('count memory > '.$sync_memory.' current:'.$current_usage.' or time > '.$sync_second.
+						' current: '.$time.'s ','sync');
+				}catch (Exception $e){
+					$this->log('multi push error :' . $e->getMessage());
 				}
-				$replies = $pipe->exec();
-				$this->log('count memory > '.$sync_memory.' current:'.$current_usage.' or time > '.$sync_second.
-					' current: '.$time.'s ','sync');
-			}catch (Exception $e){
-				$this->log('multi push error :' . $e->getMessage());
 			}
+
 			$this->begin = time(); //reset begin time
 			unset($this->message); //reset message count
 		}
