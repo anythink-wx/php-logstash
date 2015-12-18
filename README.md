@@ -212,13 +212,13 @@ Array
 }
 ```
 
-以上配置为Ubuntu APT 安装的脚本，自定义路径安装的请更改pid位置后再使用
+以上配置为Ubuntu APT 安装的脚本，自定义路径安装的请使用如下配置
 
 ```
 /data/logs/*.json  {
         daily
         missingok
-        rotate 10
+        rotate 10  
         dateext
         compress
         delaycompress
@@ -226,7 +226,7 @@ Array
         create 644 www-data.www-data
         sharedscripts
         postrotate
-                /usr/local/server/nginx/sbin/nginx -s reload
+                /usr/local/nginx/sbin/nginx -s reload
         endscript
 }
 ```
