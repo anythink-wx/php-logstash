@@ -4,7 +4,7 @@
  */
 require __DIR__ .'/logstash.php';
 $cfg = [
-	'host' => '127.0.0.1',
+	'redis' => 'tcp://127.0.0.1:6379',
 ];
 
 

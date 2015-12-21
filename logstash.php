@@ -40,8 +40,7 @@ class LogStash{
 				break;
 		}
 
-		$this->default_value($cfg,'host','127.0.0.1');
-		$this->default_value($cfg,'port',6379);
+		$this->default_value($cfg,'redis' ,'tcp://127.0.0.1:6379');
 		$this->default_value($cfg,'agent_log',__DIR__ .'/agent.log');
 		$this->default_value($cfg,'type','log');
 		$this->default_value($cfg,'input_sync_memory',5*1024*1024);
@@ -49,10 +48,8 @@ class LogStash{
 		$this->default_value($cfg,'parser',[$this,'parser']);
 		$this->default_value($cfg,'log_level','product');
 
-		$this->default_value($cfg,'elastic_host',['http://127.0.0.1:9200']);
+		$this->default_value($cfg,'elastic',['http://127.0.0.1:9200']);
 		$this->default_value($cfg,'prefix','phplogstash');
-		$this->default_value($cfg,'elastic_user');
-		$this->default_value($cfg,'elastic_pwd');
 		$this->default_value($cfg,'shards',5);
 		$this->default_value($cfg,'replicas',2);
 		$this->config = $cfg;
@@ -70,9 +67,11 @@ class LogStash{
 	 * redis 链接
 	 */
 	private function redis(){
+		$cfg = $this->getRedisHost();
 		try {
 			$redis = new redis();
-			$redis->pconnect($this->config['host'],$this->config['port'],0);
+			$redis->pconnect($cfg['host'],$cfg['port'],0);
+			if($cfg['auth'])    $redis->auth($cfg['auth']);
 			$this->redis = $redis;
 			$this->redis->ping();
 		}catch (Exception $e){
@@ -160,15 +159,29 @@ class LogStash{
 
 
 	/**
-	 * 判断es配置类型
+	 * 获取redis配置
+	 * @return array
+	 */
+	private function getRedisHost(){
+		$cfg = $this->config['redis'];
+		$parse_url = parse_url($cfg);
+		return [
+			'host' => $parse_url['host'],
+			'port' => $parse_url['port'],
+			'auth' => isset($parse_url['user']) ?  $parse_url['pass'] : null,
+		];
+	}
+
+	/**
+	 * 获取es配置
 	 * @return array
 	 */
 	private function getEsHost(){
-		if(is_array($this->config['elastic_host'])){
-			$rand = mt_rand(0,count($this->config['elastic_host'])-1);
-			$cfg = $this->config['elastic_host'][$rand];
+		if(is_array($this->config['elastic'])){
+			$rand = mt_rand(0,count($this->config['elastic'])-1);
+			$cfg = $this->config['elastic'][$rand];
 		}else{
-			$cfg = $this->config['elastic_host'];
+			$cfg = $this->config['elastic'];
 		}
 		$parse_url = parse_url($cfg);
 		return [
