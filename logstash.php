@@ -103,7 +103,9 @@ class LogStash{
 			while($line = fgets(STDIN)){
 				$line = trim($line);
 				if($line){
-					$this->message[] = call_user_func($this->config['parser'],$line);
+					if($log = call_user_func($this->config['parser'],$line)){
+						$this->message[] = $log;
+					}
 					$this->inputAgent();
 				}
 			}
@@ -373,6 +375,7 @@ class LogStash{
 	 */
 	private function parser($message){
 		$json = json_decode($message,true);
+		if($json['timestamp'] == '') return false;
 		list($request_url,$params) = explode('?',$json['requesturi']);
 
 		$client = explode(',',$json['client']);
