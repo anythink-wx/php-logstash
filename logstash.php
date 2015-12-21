@@ -374,6 +374,13 @@ class LogStash{
 	 * @return mixed
 	 */
 	private function parser($message){
+		$message = preg_replace('/[\x00-\x08\x10\x0B\x0C\x0E-\x19\x7F]'.
+			'|[\x00-\x7F][\x80-\xBF]+'.
+			'|([\xC0\xC1]|[\xF0-\xFF])[\x80-\xBF]*'.
+			'|[\xC2-\xDF]((?![\x80-\xBF])|[\x80-\xBF]{2,})'.
+			'|[\xE0-\xEF](([\x80-\xBF](?![\x80-\xBF]))|(?![\x80-\xBF]{2})|[\x80-\xBF]{3,})/S',
+			'?', $message );//
+		$message = str_replace(':-',':"-"',$message);
 		$json = json_decode($message,true);
 		if($json['timestamp'] == ''){
 			$this->log('empty timestamp log:'. $message);
