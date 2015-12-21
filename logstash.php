@@ -374,11 +374,18 @@ class LogStash{
 	private function parser($message){
 		$json = json_decode($message,true);
 		list($request_url,$params) = explode('?',$json['requesturi']);
+
+		$client = explode(',',$json['client']);
+		if(count($client) > 1){
+			$json['client'] = array_pop($client);
+		}elseif($json['client'] == '-'){
+			$json['client'] = '127.0.0.1';
+		}
 		parse_str($params,$paramsOutput);
 		$json['responsetime'] = floatval($json['responsetime']);
 		$json['resquesturi'] = $request_url;
 		$json['args'] = $paramsOutput;
-		unset($request_url,$params,$paramsOutput);
+		unset($request_url,$params,$paramsOutput,$client);
 		return $json;
 	}
 
