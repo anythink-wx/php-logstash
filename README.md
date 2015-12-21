@@ -95,6 +95,8 @@ agent.php     #调用自定义配置文件并由该文件引导
      'elastic_user'      => '',                       # es 用户名             
      'elastic_pwd'       => '',                       # es 密码 程序采用 http auth_basic 认证方式，其他认证暂不支持
      'prefix'            => 'phplogstash',            # es 默认索引前缀名字为 phplogstash-2015.12.12 
+     'shards'            => '5',                      # es 分片数量
+     'replicas'          => '2',                      # es 副本数量
 ];
 ```
 

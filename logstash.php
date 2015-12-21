@@ -44,14 +44,16 @@ class LogStash{
 		$this->default_value($cfg,'port',6379);
 		$this->default_value($cfg,'agent_log',__DIR__ .'/agent.log');
 		$this->default_value($cfg,'type','log');
-		$this->default_value($cfg,'prefix','phplogstash');
 		$this->default_value($cfg,'input_sync_memory',5*1024*1024);
 		$this->default_value($cfg,'input_sync_second',5);
 		$this->default_value($cfg,'parser',[$this,'parser']);
 
-		$this->default_value($cfg,'elastic_host','http://127.0.0.1:9200');
+		$this->default_value($cfg,'elastic_host',['http://127.0.0.1:9200']);
+		$this->default_value($cfg,'prefix','phplogstash');
 		$this->default_value($cfg,'elastic_user');
 		$this->default_value($cfg,'elastic_pwd');
+		$this->default_value($cfg,'shards',5);
+		$this->default_value($cfg,'replicas',2);
 		$this->config = $cfg;
 		$this->redis();
 		return $this;
@@ -156,24 +158,40 @@ class LogStash{
 	}
 
 
-
+	/**
+	 * 判断es配置类型
+	 * @return array
+	 */
+	private function getEsHost(){
+		if(is_array($this->config['elastic_host'])){
+			$rand = mt_rand(0,count($this->config['elastic_host'])-1);
+			$cfg = $this->config['elastic_host'][$rand];
+		}else{
+			$cfg = $this->config['elastic_host'];
+		}
+		$parse_url = parse_url($cfg);
+		return [
+			'url' => $parse_url['scheme'] .'://'. $parse_url['host'] .':'. $parse_url['port'],
+			'user' => isset($parse_url['user']) ?  $parse_url['user'] : null,
+			'pass' => isset($parse_url['pass']) ? $parse_url['pass'] : null,
+		];
+	}
 
 	private function esCurl($url,$data='',$method='POST'){
+		$cfg = $this->getEsHost();
 		$ch = curl_init();
-		curl_setopt($ch, CURLOPT_URL, $this->config['elastic_host'].$url);
+		curl_setopt($ch, CURLOPT_URL, $cfg['url'].$url);
 		curl_setopt($ch, CURLOPT_HEADER, 0);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 		curl_setopt($ch,CURLOPT_TIMEOUT,5);
 		//curl_setopt ($ch, CURLOPT_PROXY, 'http://192.168.1.40:8888');
 
-
-
-		if($this->config['elastic_user']){
-			curl_setopt($ch, CURLOPT_USERPWD, "{$this->config['elastic_user']}:{$this->config['elastic_pwd']}");
+		if($cfg['user'] || $cfg['pass']){
+			curl_setopt($ch, CURLOPT_USERPWD, "{$cfg['user']}:{$cfg['pass']}");
 		}
 
+		$method = strtoupper($method);
 		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-
 		if($data){
 			curl_setopt ( $ch, CURLOPT_POSTFIELDS, $data );
 		}
@@ -182,21 +200,17 @@ class LogStash{
 		$body = curl_exec($ch);
 		$code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
 
-		$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
-			$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
-			'Curl error:' . curl_error($ch). PHP_EOL.
-			'body: '.$body.PHP_EOL.
-			'data: '.mb_substr($data,0,100)
-		);
 
 
 
-		if(curl_error($ch)){
-			$this->log('elastic search connect error  '.PHP_EOL.'code: '. $code .PHP_EOL.
-				$this->config['elastic_host'].$url.' '.$method.PHP_EOL.
-				'Curl error:' . curl_error($ch). PHP_EOL.
-				'body: '.$body.PHP_EOL.
-				'data: '.mb_substr($data,0,100)
+
+		if(curl_error($ch) || $code > 201){
+			$this->log('ElasticSearch error ' .PHP_EOL.
+				'code: ' .$code. PHP_EOL.
+				$cfg['url'] .$url .' '. $method .PHP_EOL.
+				'Curl error:' . curl_error($ch) .PHP_EOL.
+				'body: ' .$body .PHP_EOL.
+				'data: '.mb_substr($data,0,400)
 			);
 		}
 
@@ -210,7 +224,11 @@ class LogStash{
 		$string_not_analyzed = ['type'=>'string','index'=>'not_analyzed','doc_values'=>true];
 		//put /d curl -XPUT localhost:9200/_template/template_1 -d
 		$indices['template'] = $this->config['prefix'].'-*';
-		$indices['settings']['index'] = ['number_of_shards' => 1,'number_of_replicas'=>1,'refresh_interval'=>'5s'];
+		$indices['settings']['index'] = [
+			'number_of_shards' => $this->config['shards'],
+			'number_of_replicas' => $this->config['replicas'],
+			'refresh_interval'=>'5s'
+		];
 
 		$indices['mappings']['_default_']['dynamic_templates'][]['string_fields'] = [
 			'match_mapping_type' => 'string',
@@ -315,7 +333,7 @@ class LogStash{
 	 * @param $message
 	 * @return mixed
 	 */
-	private static function parser($message){
+	private function parser($message){
 		$json = json_decode($message,true);
 		list($request_url,$params) = explode('?',$json['requesturi']);
 		parse_str($params,$paramsOutput);
