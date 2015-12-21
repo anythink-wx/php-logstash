@@ -375,7 +375,10 @@ class LogStash{
 	 */
 	private function parser($message){
 		$json = json_decode($message,true);
-		if($json['timestamp'] == '') return false;
+		if($json['timestamp'] == ''){
+			$this->log('empty timestamp log:'. $message);
+			return false;
+		}
 		list($request_url,$params) = explode('?',$json['requesturi']);
 
 		$client = explode(',',$json['client']);
