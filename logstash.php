@@ -21,23 +21,16 @@ class LogStash{
 	 * @param array $config
 	 */
 	function handler(array $cfg=[]){
-		$opt = getopt('',['listen::','indexer::','conf::','build::']);
-		switch($opt){
-			case isset($opt['listen']):
-				$this->cmd = 'listen';
-				$this->args = $opt['listen'];
+		$key = ['listen::','indexer::','conf::','build::','status::'];
+		$opt = getopt('',$key);
+		$this->cmd = 'listen';
+		foreach($key as $v){
+			$v = str_replace('::','',$v);
+			if(isset($opt[$v])){
+				$this->cmd = $v;
+				$this->args = $opt[$v];
 				break;
-			case isset($opt['indexer']):
-				$this->cmd = 'indexer';
-				$this->args = $opt['indexer'];
-				break;
-			case isset($opt['build']):
-				$this->cmd = 'build';
-				$this->args = $opt['build'];
-				break;
-			default:
-				$this->cmd = 'listen';
-				break;
+			}
 		}
 
 		$this->default_value($cfg,'redis' ,'tcp://127.0.0.1:6379');
@@ -132,6 +125,37 @@ class LogStash{
 			$this->indexerAgent();
 			$this->log('waiting for queue','debug');
 		}
+	}
+
+	/**
+	 * 获取队列信息
+	 */
+	function status(){
+		$this->redis();
+		$qps=0;
+		while(true){
+			echo $this->strPad('time') .'|'.
+				$this->strPad('keys',10) .'|'.
+				$this->strPad('QPS',10).'|'.
+				PHP_EOL;
+
+			$size = $this->redis->lSize($this->config['type']);
+			if($qps == 0){
+				$current_qps = 'N/A';
+			}else{
+				$current_qps  =  $qps - $size.'/s';
+			}
+			$qps = $size;
+			echo $this->strPad(date('Y-m-d H:i:s'),20,' ') .'|'.
+				$this->strPad($size,10,' ').'|'.
+				$this->strPad($current_qps,10,' ').'|'.
+				PHP_EOL;
+			sleep(1);
+		}
+	}
+
+	private function strPad($input,$len=20,$pad_str='='){
+		return str_pad($input,$len,$pad_str,STR_PAD_BOTH);
 	}
 
 	/**
