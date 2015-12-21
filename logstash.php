@@ -373,7 +373,6 @@ class LogStash{
 	 */
 	private function parser($message){
 		$json = json_decode($message,true);
-		if($message[''])
 		list($request_url,$params) = explode('?',$json['requesturi']);
 		parse_str($params,$paramsOutput);
 		$json['responsetime'] = floatval($json['responsetime']);
