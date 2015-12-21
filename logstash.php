@@ -377,7 +377,7 @@ class LogStash{
 
 		$client = explode(',',$json['client']);
 		if(count($client) > 1){
-			$json['client'] = array_pop($client);
+			$json['client'] = array_shift($client);
 		}elseif($json['client'] == '-'){
 			$json['client'] = '127.0.0.1';
 		}
