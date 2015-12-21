@@ -5,7 +5,7 @@
  * Date: 15/12/13
  * Time: 下午7:07
  */
-define('php_logstash','0.1.1');
+define('php_logstash','1.0.0');
 
 class LogStash{
 	private $config;
