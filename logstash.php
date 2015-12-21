@@ -221,7 +221,7 @@ class LogStash{
 		curl_setopt($ch, CURLOPT_URL, $cfg['url'].$url);
 		curl_setopt($ch, CURLOPT_HEADER, 0);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-		curl_setopt($ch,CURLOPT_TIMEOUT,5);
+		curl_setopt($ch,CURLOPT_TIMEOUT,300);
 		//curl_setopt ($ch, CURLOPT_PROXY, 'http://192.168.1.40:8888');
 
 		if($cfg['user'] || $cfg['pass']){
