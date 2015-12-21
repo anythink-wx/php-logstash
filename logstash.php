@@ -44,7 +44,7 @@ class LogStash{
 		$this->default_value($cfg,'elastic',['http://127.0.0.1:9200']);
 		$this->default_value($cfg,'prefix','phplogstash');
 		$this->default_value($cfg,'shards',5);
-		$this->default_value($cfg,'replicas',2);
+		$this->default_value($cfg,'replicas',1);
 		$this->config = $cfg;
 		$this->redis();
 		return $this;
@@ -373,6 +373,7 @@ class LogStash{
 	 */
 	private function parser($message){
 		$json = json_decode($message,true);
+		if($message[''])
 		list($request_url,$params) = explode('?',$json['requesturi']);
 		parse_str($params,$paramsOutput);
 		$json['responsetime'] = floatval($json['responsetime']);
@@ -427,6 +428,7 @@ class LogStash{
 			if(!empty($this->message)){
 				foreach($this->message as $pack){
 					$json = json_decode($pack,true);
+					if(!$json['timestamp']) continue;
 					$date = date('Y.m.d',strtotime($json['timestamp']));
 					$type = $this->config['type'];
 					$index = $this->config['prefix'].'-'.date('Y.m.d',strtotime($json['timestamp']));
