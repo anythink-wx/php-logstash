@@ -5,7 +5,8 @@
  * Date: 15/12/13
  * Time: 下午7:07
  */
-define('php_logstash','1.0.0');
+define('php_logstash','1.0.2');
+date_default_timezone_set('PRC');
 
 class LogStash{
 	private $config;
@@ -96,6 +97,8 @@ class LogStash{
 					$this->log('listen for in ' . $this->args . ', file pointer ' . $this->file_pointer, 'debug');
 					$this->inputAgent();
 					sleep(1);
+				}else{
+					$this->file_pointer = 0;
 				}
 			}
 		}else{
@@ -373,19 +376,20 @@ class LogStash{
 	 * @param $message
 	 * @return mixed
 	 */
+	/**
+	 * 默认的处理log的方法
+	 * @param $message
+	 * @return mixed
+	 */
 	private function parser($message){
-		$message = preg_replace('/[\x00-\x08\x10\x0B\x0C\x0E-\x19\x7F]'.
-			'|[\x00-\x7F][\x80-\xBF]+'.
-			'|([\xC0\xC1]|[\xF0-\xFF])[\x80-\xBF]*'.
-			'|[\xC2-\xDF]((?![\x80-\xBF])|[\x80-\xBF]{2,})'.
-			'|[\xE0-\xEF](([\x80-\xBF](?![\x80-\xBF]))|(?![\x80-\xBF]{2})|[\x80-\xBF]{3,})/S',
-			'?', $message );//
 		$message = str_replace(':-',':"-"',$message);
+		$message = preg_replace('/\\\x[0-9a-f]{2}/i','?', $message);
 		$json = json_decode($message,true);
 		if($json['timestamp'] == ''){
 			$this->log('empty timestamp log:'. $message);
 			return false;
 		}
+
 		list($request_url,$params) = explode('?',$json['requesturi']);
 
 		$client = explode(',',$json['client']);
