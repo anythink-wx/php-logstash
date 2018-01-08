@@ -12,7 +12,7 @@ php实现的轻量级日志文件监控
 
 php agent.php --listen=case.log 用来监听访问日志的变更
 
-或者使用命令 tail -F case.log | php agent.php --listen 来监听来自 stdin 的输入。
+或者使用命令 tailf case.log | php agent.php --listen 来监听来自 stdin 的输入。
 
 该功能会持续将监听到的变更记入Redis队列中同时格式化将要记录的Log。
 
